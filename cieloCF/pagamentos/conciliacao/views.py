@@ -8,8 +8,8 @@ def conciliacao_pagamentos(request):
 
     pagamentos_cielo = buscar_pagamentos_cielo()
 
-    pagamentos_banco = Pagamento.objects.values_list(
-        "transacao", flat=True
+    pagamentos_banco = set(
+        Pagamento.objects.values_list("transacao", flat=True)
     )
 
     faltantes = []
@@ -17,11 +17,11 @@ def conciliacao_pagamentos(request):
     for pagamento in pagamentos_cielo:
 
         transacao = pagamento.get("Payment", {}).get("PaymentId")
-        valor = pagamento.get("Payment", {}).get("Amount")
+        valor = round(pagamento.get("Payment", {}).get("Amount") / 100,2)
         status = pagamento.get("Payment", {}).get("Status")
         nome = pagamento.get("Payment", {}).get("Name")
 
-        if transacao not in pagamentos_banco:
+        if transacao not in pagamentos_banco and status == 2:
 
             faltantes.append({
                 "transacao": transacao,
