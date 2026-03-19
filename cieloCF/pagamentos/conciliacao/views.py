@@ -1,53 +1,39 @@
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from .models import Pagamento
+
 from .services import (
     buscar_pagamentos_cielo,
     extrair_dados_pagamento,
     verificar_duplicados_por_criterio,
-    STATUS_PAGO
+    filtrar_pagamentos_hoje,
+    identificar_faltantes
 )
 
 
 @api_view(["GET"])
 def conciliacao_pagamentos(request):
 
-    pagamentos_cielo = buscar_pagamentos_cielo()
+    pagamentos_raw = buscar_pagamentos_cielo()
+    pagamentos_hoje = filtrar_pagamentos_hoje(pagamentos_raw)
 
     pagamentos_banco = set(
         Pagamento.objects.values_list("transacao", flat=True)
     )
 
-    faltantes = []
+    dados_processados = [
+        extrair_dados_pagamento(p)
+        for p in pagamentos_hoje
+    ]
 
-    dados_processados = []
+    dados_processados = [d for d in dados_processados if d]
 
-    for pagamento in pagamentos_cielo:
+    faltantes = identificar_faltantes(dados_processados, pagamentos_banco)
 
-        dados = extrair_dados_pagamento(pagamento)
-
-        if not dados:
-            continue
-
-        dados_processados.append(dados)
-
-        if (
-            dados["transacao"] not in pagamentos_banco
-            and dados["status"] == STATUS_PAGO
-        ):
-            faltantes.append({
-                "transacao": dados["transacao"],
-                "nome": dados["nome"],
-                "valor": dados["valor"],
-                "cartao_final": dados["cartao_final"],
-                "bandeira": dados["bandeira"],
-                "titular": dados["titular"],
-            })
-
-    duplicados = verificar_duplicados_por_criterio(pagamentos_cielo)
+    duplicados = verificar_duplicados_por_criterio(dados_processados)
 
     return Response({
-        "total_cielo": len(pagamentos_cielo),
+        "total_cielo": len(pagamentos_hoje),
         "total_banco": len(pagamentos_banco),
         "faltantes": len(faltantes),
         "duplicados": len(duplicados),
